@@ -9,6 +9,10 @@
 import Foundation
 import ObjCAA
 
+public enum Metric {
+    case UTC, TT, UT1, TAI
+}
+
 /// The Julian Day is a continuous count of days and fractions thereof from the beginning of the year -4712.
 /// By tradition, the Julian Day begins at Greenwhich mean noon, that is, at 12h Universal Time.
 /// Julian Day structs conform to SwiftAA Numeric type protocol.
@@ -16,12 +20,22 @@ public struct JulianDay: NumericType, CustomStringConvertible {
     
     /// The Julian Day value
     public let value: Double
+    public var metric: Metric
     
     /// Creates a Julian Day initialized to contain the given value.
     ///
     /// - Parameter value: The value for the new Julian Day.
     public init(_ value: Double) {
         self.value = value
+        self.metric = .TT
+    }
+
+    /// Creates a Julian Day initialized to contain the given value with the given metric.
+    ///
+    /// - Parameter value: The value for the new Julian Day.
+    public init(_ value: Double, _ metric: Metric) {
+        self.value = value
+        self.metric = metric
     }
     
     /// Creates a Julian Day initialized from a given Gregorian calendar date, in the UT reference frame,
@@ -36,7 +50,7 @@ public struct JulianDay: NumericType, CustomStringConvertible {
     ///   - second: The second of the date. Precision goes to the nanosecond.
     public init(year: Int, month: Int, day: Int, hour: Int = 0, minute: Int = 0, second: Double = 0.0) {
         let aaDate = KPCAADate(year: year, month: month, day: Double(day), hour: Double(hour), minute: Double(minute), second: second, usingGregorianCalendar: true)!
-        self.init(aaDate.julian())
+        self.init(aaDate.julian(), .UTC)
     }
     
     /// Returns a Julian Day struct initialized from a given Gregorian calendar date, in the UT reference frame,
@@ -55,12 +69,31 @@ public struct JulianDay: NumericType, CustomStringConvertible {
     public init(modified: Double) {
         self.init(modified + ModifiedJulianDayZero)
     }
+    
+    /// Returns a Julian Day struct initialized from a Modified Julian Day (MJD) value and the given metric.
+    ///
+    /// - Parameter modified: The Modified Julian Day value.
+    public init(modified: Double, metric: Metric) {
+        self.init(modified + ModifiedJulianDayZero, metric)
+    }
+
 }
 
 public extension JulianDay {
-    /// Returns a new Date object, in the Gregorian calendar, corresponding to the Julian Day value.
+    /// Returns a new Date object, in UTC, in the Gregorian calendar, corresponding to the Julian Day value.
     var date: Date {
-        let aaDate = KPCAADate(julianDay: value, usingGregorianCalendar: true)!
+        var v: Double
+        switch metric {
+            case .TT:
+                v = KPCAADynamicalTime_TT2UTC(value)
+            case .UTC:
+                v = value
+            case .UT1:
+                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_UT12TT(value))
+            case .TAI:
+                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_TAI2TT(value))
+        }
+        let aaDate = KPCAADate(julianDay: v, usingGregorianCalendar: true)!
         let decimalSeconds = aaDate.second()
         let roundedSeconds = decimalSeconds.rounded(.towardZero)
         let nanoseconds = (decimalSeconds - roundedSeconds) * 1e9
@@ -84,7 +117,9 @@ public extension JulianDay {
     }
     
     /// Returns the Julian Day corresponding to the Greenwhich midnight before the actual value.
-    var midnight: JulianDay { return JulianDay((value - 0.5).rounded(.down) + 0.5) }
+    var midnight: JulianDay {
+        return JulianDay((value - 0.5).rounded(.down) + 0.5)
+    }
     
     /// Returns the Julian Day corresponding to the geometric midnight local to a given Earth longitude,
     /// before the actual value. It is a direct function of the longitude, and makes no reference to time zone whatsoever.
@@ -238,6 +273,34 @@ public extension JulianDay {
     /// - Returns: A difference in Seconds.
     func UT1minusUTC() -> Second {
         return Second(KPCAADynamicalTime_UT1MinusUTC(self.value))
+    }
+    
+    func toMetric(_ metric: Metric) -> JulianDay {
+        if metric == self.metric {
+            return self
+        } else {
+            let v: Double
+            switch self.metric {
+                case .TT:
+                    v = value
+                case .UTC:
+                    v = KPCAADynamicalTime_UTC2TT(value)
+                case .TAI:
+                    v = KPCAADynamicalTime_TAI2TT(value)
+                case .UT1:
+                    v = KPCAADynamicalTime_UT12TT(value)
+            }
+            switch metric {
+                case .TT:
+                    return JulianDay(v)
+                case .UTC:
+                    return JulianDay(KPCAADynamicalTime_TT2UTC(v), .UTC)
+                case .TAI:
+                    return JulianDay(KPCAADynamicalTime_TT2TAI(v), .TAI)
+                case .UT1:
+                    return JulianDay(KPCAADynamicalTime_TT2UT1(v), .UT1)
+            }
+        }
     }
     
     /// The description of the Julian Day.
