@@ -80,20 +80,9 @@ public struct JulianDay: NumericType, CustomStringConvertible {
 }
 
 public extension JulianDay {
-    /// Returns a new Date object, in UTC, in the Gregorian calendar, corresponding to the Julian Day value.
+    /// Returns a new Date object in the Gregorian calendar, corresponding to the Julian Day value.
     var date: Date {
-        var v: Double
-        switch metric {
-            case .TT:
-                v = KPCAADynamicalTime_TT2UTC(value)
-            case .UTC:
-                v = value
-            case .UT1:
-                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_UT12TT(value))
-            case .TAI:
-                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_TAI2TT(value))
-        }
-        let aaDate = KPCAADate(julianDay: v, usingGregorianCalendar: true)!
+        let aaDate = KPCAADate(julianDay: value, usingGregorianCalendar: true)!
         let decimalSeconds = aaDate.second()
         let roundedSeconds = decimalSeconds.rounded(.towardZero)
         let nanoseconds = (decimalSeconds - roundedSeconds) * 1e9
@@ -107,6 +96,22 @@ public extension JulianDay {
         
         let date = Calendar.gregorianGMT.date(from: components)!
         return date
+    }
+    
+    /// Returns a new Date object, in UTC, in the Gregorian calendar, corresponding to the Julian Day value.
+    var dateUTC: Date {
+        var v: Double
+        switch metric {
+            case .TT:
+                v = KPCAADynamicalTime_TT2UTC(value)
+            case .UTC:
+                v = value
+            case .UT1:
+                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_UT12TT(value))
+            case .TAI:
+                v = KPCAADynamicalTime_TT2UTC(KPCAADynamicalTime_TAI2TT(value))
+        }
+        return JulianDay(v, .UTC).date
     }
     
     /// Returns the so-called Modified Julian Day corresponding to the Julian Day value.
